@@ -31,6 +31,12 @@ export default function AdminSidebar() {
       description: 'إضافة الدروس والمحتوى'
     },
     {
+      title: 'دعم الطلاب',
+      icon: '💬',
+      path: '/admin/support-chat',
+      description: 'محادثات الدعم الفني'
+    },
+    {
       title: 'المدفوعات',
       icon: '💰',
       path: '/admin/payments',
@@ -109,17 +115,17 @@ export default function AdminSidebar() {
   )
 }
 
-const styles = {
+const styles: any = {
   sidebar: {
     width: '280px',
     background: 'white',
     height: '100vh',
-    position: 'fixed' as const,
+    position: 'fixed',
     right: 0,
     top: 0,
     boxShadow: '2px 0 20px rgba(0,0,0,0.1)',
     display: 'flex',
-    flexDirection: 'column' as const,
+    flexDirection: 'column',
     zIndex: 1000
   },
   header: {
@@ -130,7 +136,7 @@ const styles = {
   },
   title: {
     fontSize: '20px',
-    fontWeight: 'bold' as const,
+    fontWeight: 'bold',
     marginBottom: '5px'
   },
   subtitle: {
@@ -140,7 +146,7 @@ const styles = {
   nav: {
     flex: 1,
     padding: '20px 0',
-    overflowY: 'auto' as const
+    overflowY: 'auto'
   },
   menuItem: {
     display: 'flex',
@@ -150,10 +156,7 @@ const styles = {
     borderRadius: '10px',
     textDecoration: 'none',
     transition: 'all 0.3s',
-    position: 'relative' as const,
-    '&:hover': {
-      background: '#f3f4f6'
-    }
+    position: 'relative'
   },
   menuIcon: {
     fontSize: '24px',
@@ -164,7 +167,7 @@ const styles = {
   },
   menuTitle: {
     fontSize: '15px',
-    fontWeight: '600' as const,
+    fontWeight: '600',
     marginBottom: '3px'
   },
   menuDescription: {
@@ -193,7 +196,7 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontWeight: 'bold' as const,
+    fontWeight: 'bold',
     fontSize: '18px',
     marginLeft: '10px'
   },
@@ -202,7 +205,7 @@ const styles = {
   },
   userName: {
     fontSize: '14px',
-    fontWeight: '600' as const,
+    fontWeight: '600',
     color: '#1f2937'
   },
   userRole: {
@@ -211,17 +214,14 @@ const styles = {
   },
   backLink: {
     display: 'block',
-    textAlign: 'center' as const,
+    textAlign: 'center',
     padding: '10px',
     background: '#e5e7eb',
     color: '#4b5563',
     borderRadius: '8px',
     textDecoration: 'none',
     fontSize: '14px',
-    fontWeight: '600' as const,
-    transition: 'background 0.3s',
-    '&:hover': {
-      background: '#d1d5db'
-    }
+    fontWeight: '600',
+    transition: 'background 0.3s'
   }
 }

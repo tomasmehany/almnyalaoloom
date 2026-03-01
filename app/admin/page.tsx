@@ -4,13 +4,115 @@ import { useRouter } from 'next/navigation'
 import { db } from '@/lib/firebase'
 import { 
   collection, getDocs, updateDoc, doc, addDoc, 
-  deleteDoc, query, where 
+  deleteDoc, query, where, orderBy 
 } from 'firebase/firestore'
 import Link from 'next/link'
 
+// بيانات تسجيل الدخول - حسب طلبك
+const ADMIN_EMAIL = "tomasmehany@almny"
+const ADMIN_PASSWORD = "Tomasmehany@2009"
+const AUTH_KEY = 'admin_authenticated'
+
 export default function AdminPage() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [loginForm, setLoginForm] = useState({ email: '', password: '' })
+  const [loginError, setLoginError] = useState('')
   const [activeTab, setActiveTab] = useState('students')
   
+  // تحقق عند تحميل الصفحة
+  useEffect(() => {
+    const authStatus = localStorage.getItem(AUTH_KEY)
+    if (authStatus === 'true') {
+      setIsAuthenticated(true)
+    }
+    setLoading(false)
+  }, [])
+
+  const handleLogin = (e) => {
+    e.preventDefault()
+    
+    if (loginForm.email === ADMIN_EMAIL && loginForm.password === ADMIN_PASSWORD) {
+      localStorage.setItem(AUTH_KEY, 'true')
+      setIsAuthenticated(true)
+      setLoginError('')
+    } else {
+      setLoginError('البريد الإلكتروني أو كلمة المرور غير صحيحة')
+    }
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem(AUTH_KEY)
+    setIsAuthenticated(false)
+    setLoginForm({ email: '', password: '' })
+  }
+
+  // صفحة الدخول
+  if (loading) {
+    return (
+      <div style={styles.loadingContainer}>
+        <div style={styles.loadingText}>جاري التحميل...</div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div style={styles.loginContainer}>
+        <div style={styles.loginCard}>
+          <div style={styles.loginHeader}>
+            <h1 style={styles.loginTitle}>👨‍💼 دخول الأدمن</h1>
+            <p style={styles.loginSubtitle}>منصة علمني العلوم - توماس مهني</p>
+          </div>
+
+          <form onSubmit={handleLogin} style={styles.loginForm}>
+            {loginError && (
+              <div style={styles.errorMessage}>
+                ❌ {loginError}
+              </div>
+            )}
+            
+            <div style={styles.formGroup}>
+              <label style={styles.label}>البريد الإلكتروني</label>
+              <input
+                type="text"
+                value={loginForm.email}
+                onChange={(e) => setLoginForm({...loginForm, email: e.target.value})}
+                style={styles.input}
+                placeholder="admin@.com"
+                required
+              />
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>كلمة المرور</label>
+              <input
+                type="password"
+                value={loginForm.password}
+                onChange={(e) => setLoginForm({...loginForm, password: e.target.value})}
+                style={styles.input}
+                placeholder="0000000000000000"
+                required
+              />
+            </div>
+
+            <button type="submit" style={styles.loginButton}>
+              🔐 تسجيل الدخول
+            </button>
+
+            <div style={styles.loginHint}>
+              <p>بأمثلة الدخول:</p>
+              <p><strong>البريد:</strong> admin@.com</p>
+              <p><strong>كلمة المرور:</strong> 00000000000</p>
+              <p style={styles.warningText}>⚠️ تأكد من كتابة الحروف الكبيرة والصغيرة</p>
+            </div>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
+  // صفحة الأدمن الرئيسية بعد الدخول
   const tabs = [
     { id: 'dashboard', name: 'لوحة التحكم', icon: '🏠' },
     { id: 'students', name: 'الطلاب', icon: '👨‍🎓' },
@@ -23,8 +125,15 @@ export default function AdminPage() {
   return (
     <div style={styles.container}>
       <header style={styles.header}>
-        <h1 style={styles.title}>👨‍💼 لوحة تحكم الأدمن</h1>
-        <p style={styles.subtitle}>علمني العلوم مستر بيشوي</p>
+        <div style={styles.headerTop}>
+          <div>
+            <h1 style={styles.title}>👨‍💼 لوحة تحكم الأدمن</h1>
+            <p style={styles.subtitle}>علمني العلوم مستر بيشوي</p>
+          </div>
+          <button onClick={handleLogout} style={styles.logoutButton}>
+            🚪 تسجيل الخروج
+          </button>
+        </div>
       </header>
 
       <div style={styles.tabsContainer}>
@@ -90,10 +199,59 @@ export default function AdminPage() {
   )
 }
 
+// ============================================
+// StudentsTab المعدل مع آخر دخول
+// ============================================
 function StudentsTab() {
   const [students, setStudents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
+  const [activeStudentView, setActiveStudentView] = useState('pending')
+
+  // دالة تنسيق آخر دخول بشكل جميل
+  const formatLastLogin = (lastLogin: any) => {
+    if (!lastLogin) {
+      return '❌ لم يسجل دخول بعد';
+    }
+    
+    try {
+      // لو التاريخ من نوع Firebase Timestamp
+      if (lastLogin && typeof lastLogin === 'object' && lastLogin.seconds) {
+        const date = new Date(lastLogin.seconds * 1000);
+        return `✅ ${date.toLocaleDateString('ar-EG', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        })}`;
+      }
+      
+      // لو التاريخ نص
+      if (typeof lastLogin === 'string') {
+        if (lastLogin === 'لم يسجل دخول' || lastLogin === 'لم يسجل دخول بعد') {
+          return '❌ لم يسجل دخول بعد';
+        }
+        
+        const date = new Date(lastLogin);
+        if (isNaN(date.getTime())) {
+          return '❌ تاريخ غير صالح';
+        }
+        
+        return `✅ ${date.toLocaleDateString('ar-EG', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        })}`;
+      }
+      
+      return '❌ ' + String(lastLogin);
+    } catch (e) {
+      return '❌ خطأ في التاريخ';
+    }
+  }
 
   const fetchStudents = async () => {
     try {
@@ -112,7 +270,10 @@ function StudentsTab() {
           name: data.name || 'غير معروف',
           phone: data.phone || 'بدون رقم',
           grade: data.grade || 'غير محدد',
-          status: data.status || 'pending'
+          status: data.status || 'pending',
+          createdAt: data.createdAt || new Date().toISOString(),
+          activatedAt: data.activatedAt || null,
+          lastLogin: data.lastLogin || null
         })
       })
       
@@ -130,7 +291,10 @@ function StudentsTab() {
   const activateStudent = async (studentId: string, studentName: string) => {
     try {
       const studentRef = doc(db, "users", studentId)
-      await updateDoc(studentRef, { status: 'active' })
+      await updateDoc(studentRef, { 
+        status: 'active',
+        activatedAt: new Date().toISOString()
+      })
       setMessage(`✅ تم تفعيل حساب ${studentName}`)
       fetchStudents()
     } catch (error) {
@@ -149,12 +313,48 @@ function StudentsTab() {
     }
   }
 
+  const deleteStudent = async (studentId: string, studentName: string) => {
+    if (!confirm(`هل أنت متأكد من حذف الطالب "${studentName}"؟`)) return
+    
+    try {
+      await deleteDoc(doc(db, "users", studentId))
+      setMessage(`✅ تم حذف الطالب "${studentName}"`)
+      fetchStudents()
+    } catch (error) {
+      setMessage('❌ حدث خطأ في حذف الطالب')
+    }
+  }
+
   useEffect(() => {
     fetchStudents()
   }, [])
 
   const pendingStudents = students.filter(s => s.status === 'pending')
   const activeStudents = students.filter(s => s.status === 'active')
+  const rejectedStudents = students.filter(s => s.status === 'rejected')
+
+  const formatDate = (dateString: string) => {
+    try {
+      return new Date(dateString).toLocaleDateString('ar-EG', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      })
+    } catch {
+      return 'غير معروف'
+    }
+  }
+
+  const getGradeName = (gradeCode: string) => {
+    const grades: { [key: string]: string } = {
+      '1-prep': 'أولى إعدادي',
+      '2-prep': 'ثانية إعدادي',
+      '3-prep': 'ثالثة إعدادي',
+      '1-secondary': 'أولى ثانوي',
+      '2-secondary': 'ثانية ثانوي'
+    }
+    return grades[gradeCode] || gradeCode
+  }
 
   return (
     <div style={styles.tabContent}>
@@ -175,6 +375,39 @@ function StudentsTab() {
         </div>
       )}
 
+      <div style={styles.viewTabs}>
+        <button
+          onClick={() => setActiveStudentView('pending')}
+          style={{
+            ...styles.viewTabButton,
+            background: activeStudentView === 'pending' ? '#3b82f6' : '#f3f4f6',
+            color: activeStudentView === 'pending' ? 'white' : '#4b5563'
+          }}
+        >
+          ⏳ الطلبات المعلقة ({pendingStudents.length})
+        </button>
+        <button
+          onClick={() => setActiveStudentView('active')}
+          style={{
+            ...styles.viewTabButton,
+            background: activeStudentView === 'active' ? '#10b981' : '#f3f4f6',
+            color: activeStudentView === 'active' ? 'white' : '#4b5563'
+          }}
+        >
+          ✅ الطلاب المفعلين ({activeStudents.length})
+        </button>
+        <button
+          onClick={() => setActiveStudentView('rejected')}
+          style={{
+            ...styles.viewTabButton,
+            background: activeStudentView === 'rejected' ? '#ef4444' : '#f3f4f6',
+            color: activeStudentView === 'rejected' ? 'white' : '#4b5563'
+          }}
+        >
+          ❌ الطلاب المرفوضين ({rejectedStudents.length})
+        </button>
+      </div>
+
       <div style={styles.statsGrid}>
         <div style={styles.statCard}>
           <div style={styles.statNumber}>{pendingStudents.length}</div>
@@ -185,53 +418,231 @@ function StudentsTab() {
           <div style={styles.statLabel}>طلاب مفعلين</div>
         </div>
         <div style={styles.statCard}>
+          <div style={styles.statNumber}>{rejectedStudents.length}</div>
+          <div style={styles.statLabel}>طلاب مرفوضين</div>
+        </div>
+        <div style={styles.statCard}>
           <div style={styles.statNumber}>{students.length}</div>
           <div style={styles.statLabel}>إجمالي الطلاب</div>
         </div>
       </div>
 
-      <h3 style={styles.sectionTitle}>⏳ طلبات التسجيل المعلقة</h3>
-      {loading ? (
-        <p style={styles.loadingText}>جاري تحميل البيانات...</p>
-      ) : pendingStudents.length === 0 ? (
-        <p style={styles.emptyText}>لا توجد طلبات معلقة</p>
-      ) : (
-        <div style={styles.tableContainer}>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>الاسم</th>
-                <th style={styles.th}>رقم الهاتف</th>
-                <th style={styles.th}>الصف</th>
-                <th style={styles.th}>الإجراءات</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pendingStudents.map(student => (
-                <tr key={student.id} style={styles.tr}>
-                  <td style={styles.td}>{student.name}</td>
-                  <td style={styles.td}>{student.phone}</td>
-                  <td style={styles.td}>{student.grade}</td>
-                  <td style={styles.td}>
-                    <div style={styles.actions}>
-                      <button onClick={() => activateStudent(student.id, student.name)} style={styles.activateBtn}>
-                        ✅ قبول
-                      </button>
-                      <button onClick={() => rejectStudent(student.id, student.name)} style={styles.rejectBtn}>
-                        ❌ رفض
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {/* عرض الطلبات المعلقة */}
+      {activeStudentView === 'pending' && (
+        <>
+          <h3 style={styles.sectionTitle}>⏳ طلبات التسجيل المعلقة</h3>
+          {loading ? (
+            <p style={styles.loadingText}>جاري تحميل البيانات...</p>
+          ) : pendingStudents.length === 0 ? (
+            <p style={styles.emptyText}>لا توجد طلبات معلقة</p>
+          ) : (
+            <div style={styles.tableContainer}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>الاسم</th>
+                    <th style={styles.th}>رقم الهاتف</th>
+                    <th style={styles.th}>الصف</th>
+                    <th style={styles.th}>تاريخ التسجيل</th>
+                    <th style={styles.th}>الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingStudents.map(student => (
+                    <tr key={student.id} style={styles.tr}>
+                      <td style={styles.td}>
+                        <strong>{student.name}</strong>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={styles.phoneNumber}>{student.phone}</span>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={styles.gradeBadge}>{getGradeName(student.grade)}</span>
+                      </td>
+                      <td style={styles.td}>
+                        {formatDate(student.createdAt)}
+                      </td>
+                      <td style={styles.td}>
+                        <div style={styles.actions}>
+                          <button onClick={() => activateStudent(student.id, student.name)} style={styles.activateBtn}>
+                            ✅ قبول
+                          </button>
+                          <button onClick={() => rejectStudent(student.id, student.name)} style={styles.rejectBtn}>
+                            ❌ رفض
+                          </button>
+                          <button 
+                            onClick={() => deleteStudent(student.id, student.name)}
+                            style={styles.deleteBtn}
+                          >
+                            🗑️ حذف
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* عرض الطلاب المفعلين - مع آخر دخول */}
+      {activeStudentView === 'active' && (
+        <>
+          <h3 style={styles.sectionTitle}>✅ الطلاب المفعلين</h3>
+          {loading ? (
+            <p style={styles.loadingText}>جاري تحميل البيانات...</p>
+          ) : activeStudents.length === 0 ? (
+            <p style={styles.emptyText}>لا توجد طلاب مفعلين</p>
+          ) : (
+            <div style={styles.tableContainer}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>الاسم</th>
+                    <th style={styles.th}>رقم الهاتف</th>
+                    <th style={styles.th}>الصف</th>
+                    <th style={styles.th}>تاريخ التفعيل</th>
+                    <th style={styles.th}>آخر دخول</th>
+                    <th style={styles.th}>الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeStudents.map(student => (
+                    <tr key={student.id} style={styles.tr}>
+                      <td style={styles.td}>
+                        <div style={styles.studentInfo}>
+                          <div style={styles.studentAvatar}>
+                            {student.name.charAt(0)}
+                          </div>
+                          <div>
+                            <strong>{student.name}</strong>
+                            <div style={styles.studentId}>ID: {student.id.substring(0, 8)}...</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={styles.phoneNumber}>{student.phone}</span>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={{
+                          ...styles.gradeBadge,
+                          background: '#dbeafe',
+                          color: '#1e40af'
+                        }}>
+                          {getGradeName(student.grade)}
+                        </span>
+                      </td>
+                      <td style={styles.td}>
+                        {student.activatedAt ? formatDate(student.activatedAt) : 'غير معروف'}
+                      </td>
+                      <td style={styles.td}>
+                        <span style={{
+                          background: student.lastLogin ? '#d1fae5' : '#fee2e2',
+                          color: student.lastLogin ? '#065f46' : '#991b1b',
+                          padding: '6px 12px',
+                          borderRadius: '20px',
+                          display: 'inline-block',
+                          fontSize: '13px',
+                          fontWeight: 'bold'
+                        }}>
+                          {formatLastLogin(student.lastLogin)}
+                        </span>
+                      </td>
+                      <td style={styles.td}>
+                        <div style={styles.actions}>
+                          <Link 
+                            href={`/admin/open-course?studentId=${student.id}`}
+                            style={styles.openCourseBtn}
+                          >
+                            🎓 فتح كورس
+                          </Link>
+                          <button 
+                            onClick={() => {
+                              if (confirm(`هل تريد إلغاء تفعيل ${student.name}؟`)) {
+                                updateDoc(doc(db, "users", student.id), { status: 'pending' })
+                                  .then(() => {
+                                    setMessage(`✅ تم إلغاء تفعيل ${student.name}`)
+                                    fetchStudents()
+                                  })
+                              }
+                            }}
+                            style={styles.deactivateBtn}
+                          >
+                            ⏸️ إلغاء التفعيل
+                          </button>
+                          <button 
+                            onClick={() => deleteStudent(student.id, student.name)}
+                            style={styles.deleteBtn}
+                          >
+                            🗑️ حذف
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* عرض الطلاب المرفوضين */}
+      {activeStudentView === 'rejected' && (
+        <>
+          <h3 style={styles.sectionTitle}>❌ الطلاب المرفوضين</h3>
+          {loading ? (
+            <p style={styles.loadingText}>جاري تحميل البيانات...</p>
+          ) : rejectedStudents.length === 0 ? (
+            <p style={styles.emptyText}>لا توجد طلاب مرفوضين</p>
+          ) : (
+            <div style={styles.tableContainer}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>الاسم</th>
+                    <th style={styles.th}>رقم الهاتف</th>
+                    <th style={styles.th}>الصف</th>
+                    <th style={styles.th}>تاريخ الرفض</th>
+                    <th style={styles.th}>الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rejectedStudents.map(student => (
+                    <tr key={student.id} style={styles.tr}>
+                      <td style={styles.td}>
+                        <strong style={{ color: '#ef4444' }}>{student.name}</strong>
+                      </td>
+                      <td style={styles.td}>{student.phone}</td>
+                      <td style={styles.td}>{getGradeName(student.grade)}</td>
+                      <td style={styles.td}>{formatDate(student.createdAt)}</td>
+                      <td style={styles.td}>
+                        <div style={styles.actions}>
+                          <button onClick={() => activateStudent(student.id, student.name)} style={styles.activateBtn}>
+                            ✅ إعادة القبول
+                          </button>
+                          <button onClick={() => deleteStudent(student.id, student.name)} style={styles.deleteBtn}>
+                            🗑️ حذف نهائي
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
 }
 
+// ============================================
+// CoursesTab
+// ============================================
 function CoursesTab() {
   const [courses, setCourses] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
@@ -240,10 +651,13 @@ function CoursesTab() {
     title: '',
     description: '',
     grade: '1-prep',
+    category: '',
     price: 100,
     isActive: true
   })
   const [editingCourse, setEditingCourse] = useState<any>(null)
+  const [activeGrade, setActiveGrade] = useState<string>('all')
+  const secondSecondaryCategories = ['كيمياء', 'فيزياء']
 
   const fetchCourses = async () => {
     try {
@@ -276,11 +690,13 @@ function CoursesTab() {
       return
     }
 
+    if (newCourse.grade === '2-secondary' && !newCourse.category) {
+      setMessage('❌ يجب اختيار الفولدر (كيمياء أو فيزياء) لتانية ثانوي')
+      return
+    }
+
     try {
-      console.log('🚀 محاولة إضافة كورس جديد...')
-      
-      // إضافة الكورس إلى Firestore
-      await addDoc(collection(db, "courses"), {
+      const courseData: any = {
         title: newCourse.title,
         description: newCourse.description,
         grade: newCourse.grade,
@@ -289,26 +705,21 @@ function CoursesTab() {
         createdAt: new Date().toISOString(),
         lessons: 0,
         studentsEnrolled: 0
-      })
+      }
       
-      console.log('✅ كورس مضاف بنجاح!')
+      if (newCourse.grade === '2-secondary' && newCourse.category) {
+        courseData.category = newCourse.category
+      }
+      
+      await addDoc(collection(db, "courses"), courseData)
+      
       setMessage(`✅ تم إضافة كورس "${newCourse.title}" بنجاح`)
-      
-      // تفريغ الحقول
-      setNewCourse({ title: '', description: '', grade: '1-prep', price: 100, isActive: true })
-      
-      // تحديث القائمة
+      setNewCourse({ title: '', description: '', grade: '1-prep', category: '', price: 100, isActive: true })
       fetchCourses()
       
     } catch (error: any) {
       console.error('❌ خطأ في إضافة الكورس:', error)
-      
-      let errorMsg = '❌ حدث خطأ في إضافة الكورس'
-      if (error.code === 'permission-denied') {
-        errorMsg = '❌ ليس لديك صلاحية للإضافة. تحقق من صلاحيات Firebase'
-      }
-      
-      setMessage(errorMsg)
+      setMessage('❌ حدث خطأ في إضافة الكورس')
     }
   }
 
@@ -318,6 +729,7 @@ function CoursesTab() {
       title: course.title,
       description: course.description || '',
       grade: course.grade || '1-prep',
+      category: course.category || '',
       price: course.price || 100,
       isActive: course.isActive !== false
     })
@@ -326,19 +738,32 @@ function CoursesTab() {
   const handleUpdateCourse = async () => {
     if (!editingCourse || !newCourse.title.trim()) return
 
+    if (newCourse.grade === '2-secondary' && !newCourse.category) {
+      setMessage('❌ يجب اختيار الفولدر (كيمياء أو فيزياء) لتانية ثانوي')
+      return
+    }
+
     try {
-      await updateDoc(doc(db, "courses", editingCourse.id), {
+      const updateData: any = {
         title: newCourse.title,
         description: newCourse.description,
         grade: newCourse.grade,
         price: Number(newCourse.price),
         isActive: newCourse.isActive,
         updatedAt: new Date().toISOString()
-      })
+      }
+      
+      if (newCourse.grade === '2-secondary') {
+        updateData.category = newCourse.category
+      } else {
+        updateData.category = ''
+      }
+      
+      await updateDoc(doc(db, "courses", editingCourse.id), updateData)
       
       setMessage(`✅ تم تحديث كورس "${newCourse.title}"`)
       setEditingCourse(null)
-      setNewCourse({ title: '', description: '', grade: '1-prep', price: 100, isActive: true })
+      setNewCourse({ title: '', description: '', grade: '1-prep', category: '', price: 100, isActive: true })
       fetchCourses()
       
     } catch (error) {
@@ -375,6 +800,75 @@ function CoursesTab() {
     fetchCourses()
   }, [])
 
+  const getGradeName = (gradeCode: string) => {
+    const grades: { [key: string]: string } = {
+      '1-prep': 'أولى إعدادي',
+      '2-prep': 'ثانية إعدادي',
+      '3-prep': 'ثالثة إعدادي',
+      '1-secondary': 'أولى ثانوي',
+      '2-secondary': 'ثانية ثانوي',
+      'all': 'كل الكورسات'
+    }
+    return grades[gradeCode] || gradeCode
+  }
+
+  const getFilteredCourses = () => {
+    if (activeGrade === 'all') {
+      return courses
+    }
+    return courses.filter(course => course.grade === activeGrade)
+  }
+
+  const getCoursesByGradeAndCategory = () => {
+    const filtered = getFilteredCourses()
+    
+    if (activeGrade !== '2-secondary') {
+      return { [getGradeName(activeGrade)]: filtered }
+    }
+    
+    const categories: { [key: string]: any[] } = {}
+    secondSecondaryCategories.forEach(category => {
+      categories[category] = []
+    })
+    categories['أخرى'] = []
+    
+    filtered.forEach(course => {
+      if (course.category && secondSecondaryCategories.includes(course.category)) {
+        if (!categories[course.category]) {
+          categories[course.category] = []
+        }
+        categories[course.category].push(course)
+      } else {
+        categories['أخرى'].push(course)
+      }
+    })
+    
+    Object.keys(categories).forEach(key => {
+      if (categories[key].length === 0) {
+        delete categories[key]
+      }
+    })
+    
+    return categories
+  }
+
+  const getGradeStats = () => {
+    const stats: { [key: string]: number } = {
+      'all': courses.length,
+      '1-prep': courses.filter(c => c.grade === '1-prep').length,
+      '2-prep': courses.filter(c => c.grade === '2-prep').length,
+      '3-prep': courses.filter(c => c.grade === '3-prep').length,
+      '1-secondary': courses.filter(c => c.grade === '1-secondary').length,
+      '2-secondary': courses.filter(c => c.grade === '2-secondary').length
+    }
+    return stats
+  }
+
+  const gradeStats = getGradeStats()
+  const filteredCourses = getFilteredCourses()
+  const categorizedCourses = getCoursesByGradeAndCategory()
+  const isSecondSecondary = activeGrade === '2-secondary'
+
   return (
     <div style={styles.tabContent}>
       <div style={styles.tabHeader}>
@@ -394,6 +888,69 @@ function CoursesTab() {
         </div>
       )}
 
+      <div style={styles.viewTabs}>
+        <button
+          onClick={() => setActiveGrade('all')}
+          style={{
+            ...styles.viewTabButton,
+            background: activeGrade === 'all' ? '#3b82f6' : '#f3f4f6',
+            color: activeGrade === 'all' ? 'white' : '#4b5563'
+          }}
+        >
+          📚 الكل ({gradeStats.all})
+        </button>
+        <button
+          onClick={() => setActiveGrade('1-prep')}
+          style={{
+            ...styles.viewTabButton,
+            background: activeGrade === '1-prep' ? '#10b981' : '#f3f4f6',
+            color: activeGrade === '1-prep' ? 'white' : '#4b5563'
+          }}
+        >
+          🏫 أولى إعدادي ({gradeStats['1-prep']})
+        </button>
+        <button
+          onClick={() => setActiveGrade('2-prep')}
+          style={{
+            ...styles.viewTabButton,
+            background: activeGrade === '2-prep' ? '#0ea5e9' : '#f3f4f6',
+            color: activeGrade === '2-prep' ? 'white' : '#4b5563'
+          }}
+        >
+          🏫 ثانية إعدادي ({gradeStats['2-prep']})
+        </button>
+        <button
+          onClick={() => setActiveGrade('3-prep')}
+          style={{
+            ...styles.viewTabButton,
+            background: activeGrade === '3-prep' ? '#8b5cf6' : '#f3f4f6',
+            color: activeGrade === '3-prep' ? 'white' : '#4b5563'
+          }}
+        >
+          🏫 ثالثة إعدادي ({gradeStats['3-prep']})
+        </button>
+        <button
+          onClick={() => setActiveGrade('1-secondary')}
+          style={{
+            ...styles.viewTabButton,
+            background: activeGrade === '1-secondary' ? '#f59e0b' : '#f3f4f6',
+            color: activeGrade === '1-secondary' ? 'white' : '#4b5563'
+          }}
+        >
+          🎓 أولى ثانوي ({gradeStats['1-secondary']})
+        </button>
+        <button
+          onClick={() => setActiveGrade('2-secondary')}
+          style={{
+            ...styles.viewTabButton,
+            background: activeGrade === '2-secondary' ? '#ef4444' : '#f3f4f6',
+            color: activeGrade === '2-secondary' ? 'white' : '#4b5563'
+          }}
+        >
+          🎓 ثانية ثانوي ({gradeStats['2-secondary']})
+        </button>
+      </div>
+
       <div style={styles.formSection}>
         <h3 style={styles.sectionTitle}>
           {editingCourse ? '✏️ تعديل كورس' : '➕ إضافة كورس جديد'}
@@ -410,14 +967,64 @@ function CoursesTab() {
             />
             <select
               value={newCourse.grade}
-              onChange={(e) => setNewCourse({...newCourse, grade: e.target.value})}
+              onChange={(e) => {
+                const selectedGrade = e.target.value
+                setNewCourse({
+                  ...newCourse, 
+                  grade: selectedGrade,
+                  category: selectedGrade === '2-secondary' ? newCourse.category : ''
+                })
+              }}
               style={styles.input}
             >
+              <option value="">اختر المرحلة</option>
               <option value="1-prep">أولى إعدادي</option>
               <option value="2-prep">ثانية إعدادي</option>
               <option value="3-prep">ثالثة إعدادي</option>
+              <option value="1-secondary">أولى ثانوي</option>
+              <option value="2-secondary">ثانية ثانوي</option>
             </select>
           </div>
+          
+          {newCourse.grade === '2-secondary' && (
+            <div style={styles.formRow}>
+              <select
+                value={newCourse.category}
+                onChange={(e) => setNewCourse({...newCourse, category: e.target.value})}
+                style={styles.input}
+                required
+              >
+                <option value="">اختر الفولدر لتانية ثانوي *</option>
+                {secondSecondaryCategories.map((category, index) => (
+                  <option key={index} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                placeholder="السعر (جنيه)"
+                value={newCourse.price}
+                onChange={(e) => setNewCourse({...newCourse, price: parseInt(e.target.value) || 0})}
+                style={styles.input}
+                min="0"
+              />
+            </div>
+          )}
+          
+          {newCourse.grade !== '2-secondary' && (
+            <div style={styles.formRow}>
+              <input
+                type="number"
+                placeholder="السعر (جنيه)"
+                value={newCourse.price}
+                onChange={(e) => setNewCourse({...newCourse, price: parseInt(e.target.value) || 0})}
+                style={styles.input}
+                min="0"
+              />
+              <div style={styles.inputPlaceholder}></div>
+            </div>
+          )}
           
           <div style={styles.formRow}>
             <textarea
@@ -430,14 +1037,6 @@ function CoursesTab() {
           </div>
           
           <div style={styles.formRow}>
-            <input
-              type="number"
-              placeholder="السعر (جنيه)"
-              value={newCourse.price}
-              onChange={(e) => setNewCourse({...newCourse, price: parseInt(e.target.value) || 0})}
-              style={styles.input}
-              min="0"
-            />
             <div style={styles.checkboxGroup}>
               <input
                 type="checkbox"
@@ -462,7 +1061,7 @@ function CoursesTab() {
                   type="button"
                   onClick={() => {
                     setEditingCourse(null)
-                    setNewCourse({ title: '', description: '', grade: '1-prep', price: 100, isActive: true })
+                    setNewCourse({ title: '', description: '', grade: '1-prep', category: '', price: 100, isActive: true })
                   }}
                   style={styles.cancelButton}
                 >
@@ -479,78 +1078,147 @@ function CoursesTab() {
       </div>
 
       <div style={styles.listSection}>
-        <h3 style={styles.sectionTitle}>📖 الكورسات ({courses.length})</h3>
+        <div style={styles.coursesHeader}>
+          <h3 style={styles.sectionTitle}>
+            {activeGrade === 'all' ? '📖 كل الكورسات' : `📖 كورسات ${getGradeName(activeGrade)}`} 
+            ({filteredCourses.length} كورس)
+          </h3>
+          <div style={styles.coursesStats}>
+            <span style={styles.statBadge}>✅ مفعل: {filteredCourses.filter(c => c.isActive).length}</span>
+            <span style={styles.statBadge}>⏸️ غير مفعل: {filteredCourses.filter(c => !c.isActive).length}</span>
+          </div>
+        </div>
+        
         {loading ? (
           <p style={styles.loadingText}>جاري تحميل الكورسات...</p>
-        ) : courses.length === 0 ? (
-          <p style={styles.emptyText}>لا توجد كورسات بعد. أضف كورساً جديداً!</p>
+        ) : filteredCourses.length === 0 ? (
+          <p style={styles.emptyText}>
+            {activeGrade === 'all' 
+              ? 'لا توجد كورسات بعد. أضف كورساً جديداً!' 
+              : `لا توجد كورسات لـ ${getGradeName(activeGrade)} بعد. أضف كورساً جديداً لهذه المرحلة!`}
+          </p>
         ) : (
-          <div style={styles.coursesGrid}>
-            {courses.map(course => (
-              <div key={course.id} style={styles.courseCard}>
-                <div style={styles.courseHeader}>
-                  <div>
-                    <h4 style={styles.courseCardTitle}>{course.title}</h4>
-                    <div style={styles.courseBadges}>
-                      <span style={{
-                        ...styles.statusBadge,
-                        background: course.isActive ? '#d1fae5' : '#fee2e2',
-                        color: course.isActive ? '#065f46' : '#991b1b'
-                      }}>
-                        {course.isActive ? '✅ نشط' : '❌ غير نشط'}
-                      </span>
-                      <span style={styles.gradeBadge}>
-                        {course.grade === '1-prep' ? 'أولى إعدادي' : 
-                         course.grade === '2-prep' ? 'ثانية إعدادي' : 'ثالثة إعدادي'}
-                      </span>
+          <>
+            {Object.keys(categorizedCourses).map(category => (
+              <div key={category} style={styles.categorySection}>
+                <h4 style={styles.categoryTitle}>
+                  {isSecondSecondary ? (
+                    category === 'أخرى' ? '📁 كورسات أخرى (ثانية ثانوي)' : `📁 ${category} (ثانية ثانوي)`
+                  ) : (
+                    `📚 ${getGradeName(activeGrade)}`
+                  )}
+                  ({categorizedCourses[category].length} كورس)
+                </h4>
+                <div style={styles.coursesGrid}>
+                  {categorizedCourses[category].map(course => (
+                    <div key={course.id} style={styles.courseCard}>
+                      <div style={styles.courseHeader}>
+                        <div>
+                          <h4 style={styles.courseCardTitle}>{course.title}</h4>
+                          <div style={styles.courseBadges}>
+                            <span style={{
+                              ...styles.statusBadge,
+                              background: course.isActive ? '#d1fae5' : '#fee2e2',
+                              color: course.isActive ? '#065f46' : '#991b1b'
+                            }}>
+                              {course.isActive ? '✅ نشط' : '❌ غير نشط'}
+                            </span>
+                            <span style={styles.gradeBadge}>
+                              {getGradeName(course.grade)}
+                            </span>
+                            {course.category && course.grade === '2-secondary' && (
+                              <span style={{
+                                ...styles.categoryBadge,
+                                background: '#f0f9ff',
+                                color: '#0369a1'
+                              }}>
+                                📁 {course.category}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div style={styles.coursePrice}>
+                          {course.price || 0} ج.م
+                        </div>
+                      </div>
+                      
+                      {course.description && (
+                        <p style={styles.courseCardDesc}>{course.description}</p>
+                      )}
+                      
+                      <div style={styles.courseCardInfo}>
+                        <span>📅 {new Date(course.createdAt).toLocaleDateString('ar-EG')}</span>
+                        <span>👥 {course.studentsEnrolled || 0} طالب</span>
+                      </div>
+                      
+                      <div style={styles.courseCardActions}>
+                        <button 
+                          onClick={() => handleEditCourse(course)}
+                          style={styles.editButton}
+                        >
+                          ✏️ تعديل
+                        </button>
+                        <button 
+                          onClick={() => toggleCourseStatus(course.id, course.title, course.isActive)}
+                          style={course.isActive ? styles.deactivateButton : styles.activateButton}
+                        >
+                          {course.isActive ? '⏸️ إيقاف' : '▶️ تفعيل'}
+                        </button>
+                        <Link href={`/admin/course/${course.id}/lessons`} style={styles.lessonsButton}>
+                          📝 الدروس
+                        </Link>
+                        <button 
+                          onClick={() => deleteCourse(course.id, course.title)}
+                          style={styles.deleteButton}
+                        >
+                          🗑️ حذف
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  <div style={styles.coursePrice}>
-                    {course.price || 0} ج.م
-                  </div>
-                </div>
-                
-                {course.description && (
-                  <p style={styles.courseCardDesc}>{course.description}</p>
-                )}
-                
-                <div style={styles.courseCardInfo}>
-                  <span>📅 {new Date(course.createdAt).toLocaleDateString('ar-EG')}</span>
-                  <span>👥 {course.studentsEnrolled || 0} طالب</span>
-                </div>
-                
-                <div style={styles.courseCardActions}>
-                  <button 
-                    onClick={() => handleEditCourse(course)}
-                    style={styles.editButton}
-                  >
-                    ✏️ تعديل
-                  </button>
-                  <button 
-                    onClick={() => toggleCourseStatus(course.id, course.title, course.isActive)}
-                    style={course.isActive ? styles.deactivateButton : styles.activateButton}
-                  >
-                    {course.isActive ? '⏸️ إيقاف' : '▶️ تفعيل'}
-                  </button>
-                  <Link href={`/admin/course/${course.id}/lessons`} style={styles.lessonsButton}>
-                    📝 الدروس
-                  </Link>
-                  <button 
-                    onClick={() => deleteCourse(course.id, course.title)}
-                    style={styles.deleteButton}
-                  >
-                    🗑️ حذف
-                  </button>
+                  ))}
                 </div>
               </div>
             ))}
-          </div>
+          </>
         )}
+        
+        <div style={styles.gradeStatsSection}>
+          <h4 style={styles.sectionTitle}>📊 إحصائيات المراحل</h4>
+          <div style={styles.statsGrid}>
+            <div style={styles.statCard}>
+              <div style={styles.statNumber}>{gradeStats['1-prep']}</div>
+              <div style={styles.statLabel}>أولى إعدادي</div>
+            </div>
+            <div style={styles.statCard}>
+              <div style={styles.statNumber}>{gradeStats['2-prep']}</div>
+              <div style={styles.statLabel}>ثانية إعدادي</div>
+            </div>
+            <div style={styles.statCard}>
+              <div style={styles.statNumber}>{gradeStats['3-prep']}</div>
+              <div style={styles.statLabel}>ثالثة إعدادي</div>
+            </div>
+            <div style={styles.statCard}>
+              <div style={styles.statNumber}>{gradeStats['1-secondary']}</div>
+              <div style={styles.statLabel}>أولى ثانوي</div>
+            </div>
+            <div style={styles.statCard}>
+              <div style={styles.statNumber}>{gradeStats['2-secondary']}</div>
+              <div style={styles.statLabel}>ثانية ثانوي</div>
+            </div>
+            <div style={styles.statCard}>
+              <div style={styles.statNumber}>{gradeStats.all}</div>
+              <div style={styles.statLabel}>إجمالي الكورسات</div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )
 }
 
+// ============================================
+// OpenCourseTab
+// ============================================
 function OpenCourseTab() {
   return (
     <div style={styles.tabContent}>
@@ -595,6 +1263,9 @@ function OpenCourseTab() {
   )
 }
 
+// ============================================
+// VideosTab
+// ============================================
 function VideosTab() {
   return (
     <div style={styles.tabContent}>
@@ -622,6 +1293,9 @@ function VideosTab() {
   )
 }
 
+// ============================================
+// SettingsTab
+// ============================================
 function SettingsTab() {
   const [settings, setSettings] = useState({
     platformName: 'علمني العلوم مستر بيشوي',
@@ -684,6 +1358,123 @@ function SettingsTab() {
 }
 
 const styles = {
+  loadingContainer: {
+    minHeight: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#f8fafc',
+    fontFamily: 'Arial, sans-serif',
+    direction: 'rtl' as const
+  },
+  loadingText: {
+    fontSize: '20px',
+    color: '#3b82f6'
+  },
+  loginContainer: {
+    minHeight: '100vh',
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '20px',
+    fontFamily: 'Arial, sans-serif',
+    direction: 'rtl' as const
+  },
+  loginCard: {
+    background: 'white',
+    borderRadius: '20px',
+    padding: '40px',
+    width: '100%',
+    maxWidth: '450px',
+    boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+    textAlign: 'center' as const
+  },
+  loginHeader: {
+    marginBottom: '30px'
+  },
+  loginTitle: {
+    fontSize: '28px',
+    fontWeight: 'bold' as const,
+    color: '#333',
+    marginBottom: '10px'
+  },
+  loginSubtitle: {
+    color: '#666',
+    fontSize: '16px'
+  },
+  loginForm: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '20px'
+  },
+  errorMessage: {
+    background: '#fee2e2',
+    color: '#991b1b',
+    padding: '15px',
+    borderRadius: '10px',
+    fontSize: '16px',
+    fontWeight: 'bold' as const
+  },
+  formGroup: {
+    textAlign: 'right' as const
+  },
+  label: {
+    display: 'block',
+    marginBottom: '8px',
+    color: '#333',
+    fontWeight: '600' as const,
+    fontSize: '16px'
+  },
+  input: {
+    width: '100%',
+    padding: '15px',
+    border: '2px solid #e0e0e0',
+    borderRadius: '10px',
+    fontSize: '16px',
+    background: 'white',
+    '&:focus': {
+      outline: 'none',
+      borderColor: '#3b82f6'
+    }
+  },
+  inputPlaceholder: {
+    width: '100%',
+    padding: '15px',
+    border: '2px solid transparent',
+    borderRadius: '10px',
+    fontSize: '16px',
+    background: 'transparent'
+  },
+  loginButton: {
+    padding: '16px',
+    background: '#3b82f6',
+    color: 'white',
+    border: 'none',
+    borderRadius: '10px',
+    fontSize: '18px',
+    fontWeight: 'bold' as const,
+    cursor: 'pointer',
+    transition: 'background 0.3s',
+    marginTop: '10px',
+    '&:hover': {
+      background: '#2563eb'
+    }
+  },
+  loginHint: {
+    marginTop: '30px',
+    padding: '20px',
+    background: '#f8fafc',
+    borderRadius: '10px',
+    fontSize: '14px',
+    color: '#666',
+    textAlign: 'center' as const
+  },
+  warningText: {
+    color: '#dc2626',
+    fontWeight: 'bold' as const,
+    marginTop: '10px'
+  },
   container: {
     minHeight: '100vh',
     background: '#f8fafc',
@@ -694,8 +1485,27 @@ const styles = {
     background: 'linear-gradient(to right, #1e3a8a, #3b82f6)',
     color: 'white',
     padding: '25px',
-    textAlign: 'center' as const,
     boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+  },
+  headerTop: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    maxWidth: '1400px',
+    margin: '0 auto'
+  },
+  logoutButton: {
+    padding: '10px 20px',
+    background: '#ef4444',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontWeight: '600' as const,
+    fontSize: '14px',
+    '&:hover': {
+      background: '#dc2626'
+    }
   },
   title: {
     fontSize: '32px',
@@ -872,7 +1682,8 @@ const styles = {
   },
   actions: {
     display: 'flex',
-    gap: '10px'
+    gap: '10px',
+    flexWrap: 'wrap' as const
   },
   activateBtn: {
     padding: '8px 16px',
@@ -909,17 +1720,6 @@ const styles = {
     gridTemplateColumns: '1fr 1fr',
     gap: '20px',
     alignItems: 'center'
-  },
-  input: {
-    padding: '14px',
-    border: '2px solid #e5e7eb',
-    borderRadius: '8px',
-    fontSize: '16px',
-    background: 'white',
-    '&:focus': {
-      outline: 'none',
-      borderColor: '#3b82f6'
-    }
   },
   textarea: {
     padding: '14px',
@@ -1044,6 +1844,12 @@ const styles = {
     fontSize: '12px',
     fontWeight: '600' as const
   },
+  categoryBadge: {
+    padding: '4px 12px',
+    borderRadius: '20px',
+    fontSize: '12px',
+    fontWeight: '600' as const
+  },
   coursePrice: {
     background: '#f0f9ff',
     color: '#0369a1',
@@ -1131,6 +1937,121 @@ const styles = {
     '&:hover': {
       background: '#fecaca'
     }
+  },
+  viewTabs: {
+    display: 'flex',
+    gap: '10px',
+    marginBottom: '25px',
+    flexWrap: 'wrap' as const
+  },
+  viewTabButton: {
+    padding: '12px 20px',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontWeight: '600' as const,
+    fontSize: '14px',
+    transition: 'all 0.3s',
+    flex: 1,
+    minWidth: '150px',
+    textAlign: 'center' as const
+  },
+  phoneNumber: {
+    direction: 'ltr' as const,
+    display: 'inline-block',
+    fontFamily: 'monospace',
+    background: '#f3f4f6',
+    padding: '4px 8px',
+    borderRadius: '4px'
+  },
+  deleteBtn: {
+    padding: '6px 12px',
+    background: '#fee2e2',
+    color: '#dc2626',
+    border: '1px solid #fecaca',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: '600' as const
+  },
+  deactivateBtn: {
+    padding: '6px 12px',
+    background: '#fef3c7',
+    color: '#92400e',
+    border: '1px solid #fde68a',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: '600' as const
+  },
+  openCourseBtn: {
+    padding: '6px 12px',
+    background: '#3b82f6',
+    color: 'white',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: '600' as const,
+    textDecoration: 'none',
+    display: 'inline-block'
+  },
+  studentInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px'
+  },
+  studentAvatar: {
+    width: '40px',
+    height: '40px',
+    background: 'linear-gradient(to right, #3b82f6, #8b5cf6)',
+    color: 'white',
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '16px',
+    fontWeight: 'bold' as const
+  },
+  studentId: {
+    fontSize: '11px',
+    color: '#6b7280',
+    marginTop: '2px'
+  },
+  categorySection: {
+    marginBottom: '30px',
+    padding: '20px',
+    background: '#f9fafb',
+    borderRadius: '10px'
+  },
+  categoryTitle: {
+    fontSize: '18px',
+    fontWeight: 'bold' as const,
+    color: '#1f2937',
+    marginBottom: '20px',
+    paddingBottom: '10px',
+    borderBottom: '2px solid #e5e7eb'
+  },
+  coursesHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '20px',
+    flexWrap: 'wrap' as const,
+    gap: '15px'
+  },
+  coursesStats: {
+    display: 'flex',
+    gap: '10px',
+    flexWrap: 'wrap' as const
+  },
+  statBadge: {
+    background: '#f3f4f6',
+    color: '#4b5563',
+    padding: '8px 16px',
+    borderRadius: '20px',
+    fontSize: '14px',
+    fontWeight: '600' as const
   },
   redirectCard: {
     background: 'linear-gradient(to right, #f0f9ff, #dbeafe)',
@@ -1267,5 +2188,12 @@ const styles = {
     '&:hover': {
       background: '#059669'
     }
+  },
+  gradeStatsSection: {
+    marginTop: '40px',
+    padding: '20px',
+    background: '#f9fafb',
+    borderRadius: '10px',
+    border: '2px solid #e5e7eb'
   }
 }
